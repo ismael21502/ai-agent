@@ -1,0 +1,102 @@
+# =========================
+# Python
+# =========================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+
+# =========================
+# Secrets / Credentials
+# =========================
+
+credentials.json
+token.json
+secrets.md
+*.secret
+*.secrets
+.env
+.env.*
+!.env.example
+
+
+# =========================
+# Local data
+# =========================
+
+memory.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated / runtime data
+schedule.json
+
+BuiltInTools/Google/*credentials*.json
+/tests
+smolagents-obsolete.py
+pruebaollama.py
+pruebawhisper.py
+# =========================
+# IDEs
+# =========================
+
+.vscode/
+.idea/
+
+# VS Code local settings (if you want to keep shared settings,
+# remove the .vscode/ rule and ignore only these)
+*.code-workspace
+
+
+# =========================
+# OS
+# =========================
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+
+
+# =========================
+# Logs
+# =========================
+
+*.log
+
+
+# =========================
+# Temporary files
+# =========================
+
+*.tmp
+*.temp
+*.bak
+*.swp
+*~

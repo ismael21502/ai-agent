@@ -1,3 +1,5 @@
+#AI personal assistant
+
 Objetivo:
 El agente debe funcionar al menos el 80% de las veces. 
 Debe recibir una instrucción, decidir qué hacer y qué herramientas necesita, para luego utilizarlas, analizar su resultado y llegar a una conclusión.
