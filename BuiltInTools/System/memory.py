@@ -5,6 +5,67 @@ import json
 from langchain_core.tools import tool
 from sentence_transformers import CrossEncoder
 
+# Init Database
+
+import os
+import sqlite3
+
+DB = "memory.db"
+reranker = CrossEncoder(
+    "Qwen/Qwen3-Reranker-0.6B",
+    prompts={
+        "memory": "Determine whether the document contains information relevant to the user's query."
+    },
+    default_prompt_name="memory"
+)
+
+def initDb():
+    if os.path.exists(DB):
+        os.remove(DB)
+    conn = sqlite3.connect(DB)
+    conn.executescript("""
+        CREATE TABLE episodes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            content TEXT NOT NULL,
+            embedding BLOB
+        );
+        CREATE TABLE messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            episode_id INTEGER,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            role TEXT NOT NULL,
+            content TEXT,
+            FOREIGN KEY (episode_id) REFERENCES episodes(id)
+        );
+        CREATE TABLE memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            embedding BLOB NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            source_episode_id INTEGER,
+            FOREIGN KEY (source_episode_id) REFERENCES episodes(id)
+        );
+        CREATE INDEX idx_episodes_user_id
+        ON episodes(user_id);
+
+        CREATE INDEX idx_messages_user_id
+        ON messages(user_id);
+
+        CREATE INDEX idx_messages_episode_id
+        ON messages(episode_id);
+
+        CREATE INDEX idx_memories_user_id
+        ON memories(user_id);
+    """)
+    conn.commit()
+    conn.close()
 
 def cosineSimilarity(a, b):
     dot = sum(x * y for x, y in zip(a, b))
@@ -16,7 +77,6 @@ def cosineSimilarity(a, b):
 
     return dot / (normA * normB)
 
-
 def getEmbedding(text: str):
     response = ollama.embed(
         model="qwen3-embedding:0.6b",
@@ -24,70 +84,36 @@ def getEmbedding(text: str):
     )
     return response["embeddings"][0]
 
-
-DB = "memory.db"
-
-
-def initDb():
-    conn = sqlite3.connect(DB)
-
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS memories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            content TEXT NOT NULL,
-            embedding BLOB NOT NULL,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    conn.commit()
-    conn.close()
-
-# @tool
-def addMemory(user_id: int, content: str):
-    """
-    Store information in the agent's persistent memory for future tasks.
-
-    The content must be a concise statement using this structure:
-    subject -> action -> object -> purpose (optional).
-
-    Only store information that is likely to remain useful in future
-    interactions, such as user preferences, persistent project decisions,
-    or important facts.
-
-    Do not store temporary information, intermediate results, or facts
-    relevant only to the current task.
-    """
-
+def addMemory(user_id: int, content: str, source_episode_id: int | None = None):
     embedding = getEmbedding(content)
-
     conn = sqlite3.connect(DB)
-
     conn.execute(
         """
         INSERT INTO memories
-        (user_id, content, embedding)
-        VALUES (?, ?, ?)
+        (user_id, content, embedding, source_episode_id)
+        VALUES (?, ?, ?, ?)
         """,
         (
             user_id,
             content,
-            json.dumps(embedding)
+            json.dumps(embedding),
+            source_episode_id
         )
     )
-
     conn.commit()
     conn.close()
 
-def getTopEmbeddings(query: str, topK: int = 5):
+def getTopEmbeddings(user_id: int, query: str, topK: int = 5):
     queryEmbedding = getEmbedding(query)
     conn = sqlite3.connect(DB)
-    rows = conn.execute("""
+    rows = conn.execute(
+        """
         SELECT id, content, embedding
         FROM memories
-    """).fetchall()
+        WHERE user_id = ?
+        """,
+        (user_id,)
+    ).fetchall()
     conn.close()
     results = []
     for row in rows:
@@ -108,23 +134,33 @@ def getTopEmbeddings(query: str, topK: int = 5):
     )
     return results[:topK]
 
-def searchMemory(query: str, topK: int = 3, embTopK: int = 15) -> list:
-    embTop = [embVal["value"] for embVal in getTopEmbeddings(query, embTopK)]
-    print("EmbTopK: \n",embTop)
-    model = CrossEncoder("Qwen/Qwen3-Reranker-0.6B",
-    prompts={
-        "memory": "Determine whether the document contains information relevant to the user's query."
-    },
-    default_prompt_name="memory")
-    scores = model.predict([
+def searchMemory(user_id: int, query: str, topK: int = 3, embTopK: int = 15):
+    embTop = getTopEmbeddings(
+        user_id,
+        query,
+        embTopK
+    )
+    documents = [
+        memory["value"]
+        for memory in embTop
+    ]
+    print("EmbTopK:\n", documents)
+    scores = reranker.predict([
         (query, document)
-        for document in embTop
+        for document in documents
     ])
-    sortedDocuments = sorted(zip(embTop, scores), key=lambda x: x[1], reverse=True)
-    print("Selected documents: ")
-    for document, score in sortedDocuments[:topK]:
-        print(score, document)
-    return [document for document, score in sortedDocuments][:topK]
+    sortedDocuments = sorted(
+        zip(embTop, scores),
+        key=lambda x: x[1],
+        reverse=True
+    )
+    print("Selected documents:")
+    for memory, score in sortedDocuments[:topK]:
+        print(score, memory["value"])
+    return [
+        memory["value"]
+        for memory, score in sortedDocuments[:topK]
+    ]
 
 
 
@@ -132,7 +168,7 @@ def searchMemory(query: str, topK: int = 3, embTopK: int = 15) -> list:
 
 if __name__ == "__main__":
     # print(getTopEmbeddings("Hola"))
-    print(searchMemory("¿Qué herramientas utilizo para mi agente?"))
+    # print(searchMemory("¿Qué herramientas utilizo para mi agente?"))
     # memories = [
     #     # Proyectos
     #     "El usuario desarrolla un agente de IA utilizando LangGraph.",
@@ -182,7 +218,7 @@ if __name__ == "__main__":
 
     # for memory in memories:
     #     addMemory(1, memory)
-    # initDb()
+    initDb()
 
     # addMemory(
     #     1,

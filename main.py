@@ -1,7 +1,7 @@
 from typing import Annotated
 from typing_extensions import TypedDict
 
-from langchain_core.messages import AnyMessage
+from langchain_core.messages import AnyMessage, ToolMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
@@ -15,8 +15,10 @@ from BuiltInTools.modelSelector import delegateToAI
 from BuiltInTools.Files.fileManager import listFiles, readFile, findFiles, overwriteFile, createDirectory, moveFile
 from BuiltInTools.System.timeFunctions import getCurrentTime, getCurrentTimeTool, getCurrentTimezone, addTime, substractTime, timeDiff
 from BuiltInTools.System.memory import addMemory, searchMemory
+from episode import getEpisode, checkEpisodeRelevance, mergeEpisode
 from BuiltInTools.Google.gmail import getEmails, deleteEmail, readEmail
 from BuiltInTools.System.weather import getCurrentWeather, getWeatherBetween, getWeatherAt
+from message import addMessage, serializeMessage
 
 from dotenv import load_dotenv
 import os
@@ -60,6 +62,7 @@ search = DuckDuckGoSearchRun()
 class State(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
     memories: list[str]
+    currentEpisode: str
 
 @tool
 def requestUserInput(question: str):    
@@ -81,7 +84,6 @@ tools = [tvController,
             delegateToAI, 
             listFiles, readFile, findFiles, overwriteFile, createDirectory, moveFile,
             getCurrentTimeTool, addTime, substractTime, timeDiff,
-            addMemory,
             getEmails, deleteEmail, readEmail,
             getCurrentWeather, getWeatherAt, getWeatherBetween,
             requestUserInput]
@@ -175,9 +177,15 @@ def agent(state: State):
                 content=f"Relevant facts about the user:\n{memoryText}"
             )
         )
+    if state["currentEpisode"]:
+        messages.append(
+                    SystemMessage(
+                        content=f"Summary of the last conversation: :\n{state["currentEpisode"]["content"]}"
+                    )
+                )
     messages.extend(state["messages"])
     response = model.invoke(messages)
-    print(messages)
+    # print("\nMensaje actual: ", messages[:-1])
     return {
         "messages": [response]
     }
@@ -188,11 +196,61 @@ def agent(state: State):
 
 tool_node = ToolNode(tools)
 
+def saveMessages(state: State):
+    for message in state["messages"]:
+        message_id = addMessage(
+            user_id=1,
+            message=message
+        )
+        print(
+            f"Guardado: {message.__class__.__name__} "
+            f"(id={message_id})"
+        )
+    return {}
+
+def saveEpisode(state: State):
+    messages = [
+        message
+        for message in state["messages"]
+        if not isinstance(message, ToolMessage)
+    ]
+    formattedMessages = [
+        serializeMessage(message)
+        for message in messages
+    ]
+
+    llmText = "\n\n".join(
+        f"{message['role'].upper()}\n{message['content']}"
+        for message in formattedMessages
+    )
+    if state["currentEpisode"]:
+        mergeEpisode(state["currentEpisode"], llmText)
+        print(f"Updated episode (id={state["currentEpisode"]['id']})")
+    else:
+        mergeEpisode(1, llmText)
+        print("Created new episode")
+    return {}
 def loadMemories(state: State):
-    user_message = state["messages"][0].content
-    memories = searchMemory(user_message)
+    print("Loading memories...")
+    userMessage = state["messages"][0].content
+    memories = searchMemory(1, userMessage)
     return {
         "memories": memories
+    }
+
+def loadEpisode(state: State):
+    print("Loading episode...")
+    currentEpisode = getEpisode()
+    userMessage = state["messages"][0].content
+    
+    if checkEpisodeRelevance(currentEpisode["content"], userMessage):
+        #Ask LLM if episode and message are compatible
+        return {
+            "currentEpisode": currentEpisode
+        }
+    else:
+        return {
+        "currentEpisode": None
     }
 
 # ---------------------------------------------------------
@@ -203,7 +261,8 @@ def shouldContinue(state: State):
     last_message = state["messages"][-1]
     if last_message.tool_calls:
         return "tools"
-    return END
+    # print(state["messages"])
+    return "saveMessages"
 
 
 # ---------------------------------------------------------
@@ -214,21 +273,25 @@ graph = StateGraph(State)
 
 graph.add_node("agent", agent)
 graph.add_node("tools", tool_node)
+graph.add_node("loadEpisode", loadEpisode)
 graph.add_node("loadMemories", loadMemories)
+graph.add_node("saveMessages", saveMessages)
+graph.add_node("saveEpisode", saveEpisode)
 
 # graph.add_edge(START, "agent")
-graph.add_edge(START, "loadMemories")
+graph.add_edge(START, "loadEpisode")
+graph.add_edge("loadEpisode", "loadMemories")
 graph.add_edge("loadMemories", "agent")
-
+graph.add_edge("saveMessages", "saveEpisode")
+graph.add_edge("saveEpisode", END)
 graph.add_conditional_edges(
     "agent",
     shouldContinue,
     {
         "tools": "tools",
-        END: END
+        "saveMessages": "saveMessages"
     }
 )
-
 
 graph.add_edge("tools", "agent")
 
@@ -247,7 +310,7 @@ result = app.invoke({
     "messages": [
         {
             "role": "user",
-            "content": "Revisa y haz un resumen del clima de mañana, por favor"
+            "content": "Busca en internet quién es heissenwolf."
         }
     ],
     "memories": [],
@@ -484,3 +547,4 @@ def print_result(result):
 
     print("=" * 76)
 print_result(result)
+
