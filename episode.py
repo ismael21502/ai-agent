@@ -43,46 +43,111 @@ def getEpisode(): #TODO: Esta función parece bastante inútil
 
 def checkEpisodeRelevance(episode: str, userMessage: str):
     prompt = f"""
-    Determine whether the USER MESSAGE belongs to the CURRENT EPISODE.
+    You are an episode membership classifier for an AI agent.
 
-    A message belongs to the episode ONLY when there is a specific
-    subject, task, project, or ongoing work shared by both.
-
-    Do NOT consider the message relevant merely because:
-    - the same assistant can handle it
-    - the same tools can be used
-    - both involve computers or technology
-    - the user is talking to the same assistant
-
-    If the connection is weak, indirect, or only based on the assistant's
-    general capabilities, return false.
-
-    Examples:
-
-    CURRENT EPISODE: Building a LangGraph-based AI agent.
-    USER MESSAGE: "How are we implementing memory?"
-    true
-
-    CURRENT EPISODE: Building a LangGraph-based AI agent.
-    USER MESSAGE: "Enciende la TV."
-    false
-
-    CURRENT EPISODE: Building a LangGraph-based AI agent.
-    USER MESSAGE: "¿Qué clima hará mañana?"
-    false
-
-    CURRENT EPISODE: Building a robot with an ESP32 and MG90S servos.
-    USER MESSAGE: "¿Qué servo estamos usando?"
-    true
-
-    CURRENT EPISODE: Building a robot with an ESP32 and MG90S servos.
-    USER MESSAGE: "Enciende la TV."
-    false
+    Your task is to determine whether the USER MESSAGE is a continuation
+    of the specific work or subject represented by the CURRENT EPISODE.
 
     Return ONLY:
     true
     or
     false
+
+    A message is relevant (true) ONLY when the user is explicitly
+    continuing, modifying, asking about, or resuming the specific work
+    or subject of the episode.
+
+    A message is irrelevant (false) when it is an independent request,
+    even if it could be useful to the project, could be performed by the
+    same assistant, or uses one of the assistant's tools.
+
+    IMPORTANT:
+    Do NOT infer a connection that the user did not express.
+    Do NOT assume that information is related to the episode merely
+    because it could potentially be useful for the project.
+
+    For example:
+
+    CURRENT EPISODE:
+    The user is developing a local AI agent using LangGraph and Python.
+
+    USER MESSAGE:
+    "Busca en Google información sobre Python"
+
+    OUTPUT:
+    false
+
+    The message asks for general information about Python. The user did
+    not connect the request to the AI agent.
+
+    CURRENT EPISODE:
+    The user is developing a local AI agent using LangGraph and Python.
+
+    USER MESSAGE:
+    "Busca en Google información sobre Python para mejorar nuestro agente"
+
+    OUTPUT:
+    true
+
+    The user explicitly connects the request to the agent project.
+
+    CURRENT EPISODE:
+    The user is developing a local AI agent using LangGraph.
+
+    USER MESSAGE:
+    "Enciende la TV"
+
+    OUTPUT:
+    false
+
+    Using a capability of the assistant is not a continuation of the
+    episode.
+
+    CURRENT EPISODE:
+    The user is developing a local AI agent using LangGraph.
+
+    USER MESSAGE:
+    "Quiero agregar una herramienta para controlar la TV al agente"
+
+    OUTPUT:
+    true
+
+    The user is explicitly modifying the agent project.
+
+    CURRENT EPISODE:
+    The user is developing a local AI agent using LangGraph.
+
+    USER MESSAGE:
+    "Cuál es el framework que estamos usando?"
+
+    OUTPUT:
+    true
+
+    The user is asking about the specific project described in the episode.
+
+    CURRENT EPISODE:
+    The user is developing a local AI agent using LangGraph.
+
+    USER MESSAGE:
+    "Qué clima hará mañana?"
+
+    OUTPUT:
+    false
+
+    The request is independent of the project.
+
+    CLASSIFICATION RULE:
+
+    Ask:
+    "Is the user actually continuing the specific work or subject of
+    this episode?"
+
+    Do NOT ask:
+    "Could this request somehow be related to, useful for, or performed
+    by the project?"
+
+    If the connection requires inventing or assuming a purpose that is
+    not present in the USER MESSAGE, return false.
 
     CURRENT EPISODE:
     {episode}
@@ -152,6 +217,7 @@ def mergeEpisode(currentEpisode: dict, messages: str):
         Do not remove information simply because it is not mentioned in the new messages.
         Do not invent information.
         The result should represent the accumulated state of the episode, not only the latest interaction.
+        An episode summarizes the relevant information, decisions, and context accumulated throughout the interactions in the episode.
         CURRENT EPISODE:
         {currentEpisode["content"] if currentEpisode else ""}
         NEW MESSAGES:
@@ -178,7 +244,47 @@ def mergeEpisode(currentEpisode: dict, messages: str):
         createEpisode(1, newContent)
 # from message import getAllMessages [row for row in rows if row[3] != "tool"]
 print(getEpisode()["content"])
-print(checkEpisodeRelevance(getEpisode()["content"],"Hola, sabes mi nombre?"))
+
+questions = [
+    # Claramente irrelevantes
+    "Hola, sabes mi nombre?",
+    "Buenos días",
+    "Qué hora es?",
+    "Qué clima hará mañana?",
+    "Enciende la TV",
+    "Apaga la televisión",
+    "Pon Netflix",
+    "Revisa mis correos de hoy y resumelos",
+    "Busca en Google información sobre Python",
+    "Revisa el archivo pruebaWhisper.py",
+
+    # Claramente relevantes
+    "Cuál es el framework del agente?",
+    "Deberíamos continuar creando un archivo Memories.py",
+    "Qué modelo estamos usando actualmente para el agente?",
+    "Cómo estamos almacenando las memorias?",
+    "Qué base de datos estamos utilizando?",
+    "Qué herramientas tiene actualmente el agente?",
+    "Cómo funciona el flujo de LangGraph?",
+    "Quiero modificar el sistema de memoria del agente",
+    "Deberíamos mejorar el reranker de memorias",
+    "Cómo estamos generando los embeddings de las memorias?",
+
+    # Casos frontera
+    "Establece un recordatorio para las 11:00AM que diga 'Alimentar a los gatos'",
+    "Crea una tarea para alimentar a los gatos",
+    "Quiero agregar una herramienta de recordatorios al agente",
+    "Quiero agregar una herramienta para controlar la TV al agente",
+    "Cómo podríamos hacer que el agente controle la TV?",
+    "Qué modelo pequeño podríamos usar para el agente?",
+    "Busca información sobre modelos pequeños para agentes de IA",
+    "Quiero instalar otro modelo de Ollama",
+    "Podemos mejorar la velocidad del agente?",
+    "Quiero hacer que el agente sea capaz de usar más herramientas",
+]
+# for question in questions:
+#     print("Pregunta: ", question)
+#     print(checkEpisodeRelevance(getEpisode()["content"],question))
 # saveEpisode(getEpisode(), getAllMessages())
 # currentEpisode = """"""
 

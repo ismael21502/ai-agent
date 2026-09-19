@@ -154,7 +154,7 @@ def searchMemory(user_id: int, query: str, topK: int = 3, embTopK: int = 15):
         key=lambda x: x[1],
         reverse=True
     )
-    print("Selected documents:")
+    # print("Selected documents:")
     for memory, score in sortedDocuments[:topK]:
         print(score, memory["value"])
     return [

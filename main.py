@@ -85,30 +85,29 @@ tools = [tvController,
             listFiles, readFile, findFiles, overwriteFile, createDirectory, moveFile,
             getCurrentTimeTool, addTime, substractTime, timeDiff,
             getEmails, deleteEmail, readEmail,
-            getCurrentWeather, getWeatherAt, getWeatherBetween,
-            requestUserInput]
+            getCurrentWeather, getWeatherAt, getWeatherBetween]
 
 # ---------------------------------------------------------
 # Modelo
 # ---------------------------------------------------------
 
-# model = ChatOllama(
-#     model="qwen3.5:9b",
-#     temperature=0,
-#     num_predict=-1,
-#     num_ctx=32768
-# )
+model = ChatOllama(
+    model="qwen3.5:9b",
+    temperature=0,
+    num_predict=-1,
+    num_ctx=65536
+)
 
 # nvidia/nemotron-3-ultra-550b-a55b:free
 # openrouter/free
 # qwen/qwen3.5-9b
 
-model = ChatOpenAI(
-    model="openrouter/free",
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENAI_API_KEY"),
-    temperature=0
-)
+# model = ChatOpenAI(
+#     model="openrouter/free",
+#     base_url="https://openrouter.ai/api/v1",
+#     api_key=os.getenv("OPENAI_API_KEY"),
+#     temperature=0
+# )
 
 # model = ChatOpenAI(
 #     model="qwen/qwen3.8-27b",
@@ -227,7 +226,7 @@ def saveEpisode(state: State):
         mergeEpisode(state["currentEpisode"], llmText)
         print(f"Updated episode (id={state["currentEpisode"]['id']})")
     else:
-        mergeEpisode(1, llmText)
+        mergeEpisode(state["currentEpisode"], llmText)
         print("Created new episode")
     return {}
 def loadMemories(state: State):
@@ -310,7 +309,7 @@ result = app.invoke({
     "messages": [
         {
             "role": "user",
-            "content": "Busca en internet quién es heissenwolf."
+            "content": "Sí, por favor"
         }
     ],
     "memories": [],
