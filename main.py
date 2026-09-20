@@ -237,6 +237,11 @@ def loadMemories(state: State):
         "memories": memories
     }
 
+# Memory: una frase breve, concisa y autosuficiente, idealmente de 10–15 palabras, que contiene información durable potencialmente útil en futuras conversaciones. Puede describir al usuario, sus preferencias, proyectos, decisiones, entorno de trabajo, configuraciones o recursos importantes. Puede incluir rutas relevantes. No debe contener preguntas, contexto temporal, explicaciones, razonamiento intermedio ni información específica únicamente del episodio.
+def saveMemories(state: State):
+    #Use extract memories
+    print("")
+
 def loadEpisode(state: State):
     print("Loading episode...")
     currentEpisode = getEpisode()
@@ -248,6 +253,7 @@ def loadEpisode(state: State):
             "currentEpisode": currentEpisode
         }
     else:
+        # saveMemories()
         return {
         "currentEpisode": None
     }
@@ -261,8 +267,7 @@ def shouldContinue(state: State):
     if last_message.tool_calls:
         return "tools"
     # print(state["messages"])
-    return "saveMessages"
-
+    return "saveMessages"    
 
 # ---------------------------------------------------------
 # Construir grafo
@@ -309,7 +314,7 @@ result = app.invoke({
     "messages": [
         {
             "role": "user",
-            "content": "Sí, por favor"
+            "content": "Revisa el contenido de Readme.md y resumelo, por favor"
         }
     ],
     "memories": [],
