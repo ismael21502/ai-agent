@@ -14,7 +14,7 @@ from BuiltInTools.tvController import tvController
 from BuiltInTools.modelSelector import delegateToAI
 from BuiltInTools.Files.fileManager import listFiles, readFile, findFiles, overwriteFile, createDirectory, moveFile
 from BuiltInTools.System.timeFunctions import getCurrentTime, getCurrentTimeTool, getCurrentTimezone, addTime, substractTime, timeDiff
-from BuiltInTools.System.memory import addMemory, searchMemory
+from BuiltInTools.System.memory import addMemory, searchMemory, extractMemories
 from episode import getEpisode, checkEpisodeRelevance, mergeEpisode
 from BuiltInTools.Google.gmail import getEmails, deleteEmail, readEmail
 from BuiltInTools.System.weather import getCurrentWeather, getWeatherBetween, getWeatherAt
@@ -238,9 +238,11 @@ def loadMemories(state: State):
     }
 
 # Memory: una frase breve, concisa y autosuficiente, idealmente de 10–15 palabras, que contiene información durable potencialmente útil en futuras conversaciones. Puede describir al usuario, sus preferencias, proyectos, decisiones, entorno de trabajo, configuraciones o recursos importantes. Puede incluir rutas relevantes. No debe contener preguntas, contexto temporal, explicaciones, razonamiento intermedio ni información específica únicamente del episodio.
-def saveMemories(state: State):
+def saveMemories(currentEpisode: dict):
     #Use extract memories
-    print("")
+    newMemories = extractMemories(currentEpisode["content"])
+    for memory in newMemories:
+        addMemory(1, memory , currentEpisode["id"])
 
 def loadEpisode(state: State):
     print("Loading episode...")
@@ -249,11 +251,13 @@ def loadEpisode(state: State):
     
     if checkEpisodeRelevance(currentEpisode["content"], userMessage):
         #Ask LLM if episode and message are compatible
+        print("El episode fue relevante")
         return {
             "currentEpisode": currentEpisode
         }
     else:
-        # saveMemories()
+        print("El episode no fue relevante")
+        saveMemories(currentEpisode)
         return {
         "currentEpisode": None
     }
@@ -314,7 +318,7 @@ result = app.invoke({
     "messages": [
         {
             "role": "user",
-            "content": "Revisa el contenido de Readme.md y resumelo, por favor"
+            "content": "Hola, podrías resumir el clima de mañana, por favor?"
         }
     ],
     "memories": [],

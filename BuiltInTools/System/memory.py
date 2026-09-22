@@ -4,12 +4,13 @@ import sqlite3
 import json
 from langchain_core.tools import tool
 from sentence_transformers import CrossEncoder
-
-# Init Database
+from pydantic import BaseModel
 
 import os
 import sqlite3
 
+# TODO: Ahora la estructura de lo que genera el LLM es: {entity: str, memories: list[str]}.
+# Para permitir múltiples entities podría cambiar a {entity_1: list[str], entity_2: list[str], ...}
 DB = "memory.db"
 reranker = CrossEncoder(
     "Qwen/Qwen3-Reranker-0.6B",
@@ -18,7 +19,9 @@ reranker = CrossEncoder(
     },
     default_prompt_name="memory"
 )
-
+class MemoryExtraction(BaseModel):
+    entity: str
+    memories: list[str]
 def initDb():
     if os.path.exists(DB):
         os.remove(DB)
@@ -164,201 +167,72 @@ def searchMemory(user_id: int, query: str, topK: int = 3, embTopK: int = 15):
 
 def extractMemories(episode: str) -> list[str]:
     prompt = f"""You are a memory extraction system.
-
-    Your task is to extract durable information from an episode that should be
-    preserved after the episode is no longer available.
-
-    WHAT IS A MEMORY?
-
-    A memory is a short, concise, self-contained statement about the user,
-    the user's projects, decisions, preferences, work environment, or other
-    durable information that may be useful in a future interaction.
-
-    A memory must stand on its own.
-
-    SELF-CONTAINED REQUIREMENT:
-
-    Imagine that someone reads the memory months later without having access
-    to the original episode. They must be able to understand:
-    - who or what the memory refers to,
-    - what the relevant fact is,
-    - and why the information could be useful.
-
-    Do not use vague subjects such as:
-    - "the project"
-    - "the system"
-    - "the agent"
-    - "it"
-    - "this"
-    - "the user"
-    when the subject can be stated explicitly.
-
-    Prefer:
-    "The user's AI personal assistant uses LangGraph for agent orchestration."
-
-    Instead of:
-    "Uses LangGraph for orchestration."
-
-    Prefer:
-    "The user's AI personal assistant stores episodes and memories in SQLite."
-
-    Instead of:
-    "Uses SQLite for memory and conversation episodes."
-
-    WHAT SHOULD BE REMEMBERED:
-
-    Extract information about:
-    - The user's persistent preferences or ways of working.
-    - The user's projects and their important characteristics.
-    - Important technical or architectural decisions.
-    - Important project goals or requirements that are likely to remain relevant.
-    - The user's work environment, configurations, or resources.
-    - Important file or project paths.
-    - Other durable information that could meaningfully help future interactions.
-
-    WHAT SHOULD NOT BE REMEMBERED:
-
-    Do NOT extract:
-    - Questions asked during the episode.
-    - Temporary tasks or TODO items.
-    - Problems currently being debugged.
-    - Implementation steps that have not become durable decisions.
-    - Explanations or reasoning from the episode.
-    - Temporary project status.
-    - Facts that are only useful for understanding the current episode.
-    - Trivial details.
-    - Predictions or assumptions.
-    - Information that is already implied by another memory.
-
-    For example, these are NOT memories:
-    "Need to implement memory persistence."
-    "Need to add validation nodes."
-    "Project is in early development."
-    "Main.py needs to be converted into a reusable application."
-
-    These describe temporary work or the current state of an episode.
-
-    These ARE memories:
-    "The user's AI personal assistant uses LangGraph for agent orchestration."
-    "The user's AI personal assistant stores episodes and memories in SQLite."
-    "The user prefers local-first architectures for privacy and data control."
-
-    IMPORTANT:
-
+    Extract durable information from the provided episode.
+    Return:
+    - one entity that the memories belong to;
+    - a list of durable factual statements about that entity.
+    The entity must be derived only from the provided episode.
+    The entity is the subject described by the extracted memories.
+    It is not the document, file, message, or source containing those memories.
+    The entity must identify the specific system, project, person, object, or concept
+    to which the memories belong. Avoid vague entities.
+    Only extract information that represents a stable characteristic, decision,
+    preference, requirement, architecture, or other durable knowledge.
+    Do not extract the current status of implementation, completion, bugs,
+    missing features, pending work, temporary dependencies, or other transient
+    project state.
+    Each memory must:
+    - be understandable when combined with the entity;
+    - express one clear factual statement;
+    - be supported by information in the episode;
+    - contain only the information necessary to state the fact clearly;
+    - be concise, between 10 and 20 words.
+    The memory itself does not need to repeat the entity.
+    Only use information contained in the provided episode.
+    Do not use previous conversations, other projects, examples, or outside knowledge.
+    Do not extract:
+    - temporary implementation state;
+    - TODOs or pending work;
+    - current bugs or transient problems;
+    - explanations, reasoning, or conclusions that are only relevant to the episode;
+    - information that is unlikely to remain useful.
     Do not summarize the episode.
-
-    Do not turn every fact from the episode into a memory.
-
-    Extract only information that deserves to survive after the episode is forgotten.
-
-    Each memory should ideally contain 10-15 words, while preserving clarity
-    and completeness.
-
-    Return ONLY a list of memory strings.
-
-    If the episode contains no durable information worth preserving, return [].
-    
-    Input text: 
+    Do not create multiple memories expressing substantially the same fact.
+    If the episode contains no durable information worth remembering, return an empty
+    memories list.
+    A worth remembering information is a fact that is likely to remain useful in future (long-term) conversations.
+    Episode:
     {episode}"""
     response = ollama.chat("qwen3.5:2b", messages=[
                 {"role": "user", "content": prompt}
             ],
+            format=MemoryExtraction.model_json_schema(),
+            options={
+                "temperature": 0
+            },
             think=False)
-    print(response.message.content)
-
+    result = MemoryExtraction.model_validate_json(
+        response.message.content
+    )
+    newMemories = [f"{result.entity}: {memory}" for memory in result.memories]
+    return newMemories
 
 # print(searchMemory("Hola, podrías resumir el clima"))
 
 if __name__ == "__main__":
-    memories = extractMemories("""{
-  "content": "El resumen actualizado del contenido de `Readme.md` es el siguiente:
+    memories = print(extractMemories("""{
+  "Temperaturas: "
+  " - Mínima: ~16.5°C (al amanecer, alrededor de las 6 AM) "
+  " - Máxima: ~29.0°C (a las 4 PM) "
 
----
+  "Condiciones generales: "
+  " - Precipitación: No se esperan lluvias (0 mm), con una probabilidad muy baja de lluvia (0-4%). "
+  " - Humedad: Varía entre un 26% y un 98%, siendo más alta durante la noche y el amanecer. "
+  " - Nubes: La cobertura nubosa fluctuará, con cielos mayormente despejados por la mañana y nublado en algunas horas de la tarde/noche. "
+  " - Viento: Velocidades moderadas entre 1.1 y 10.3 km/h. "
 
-## 📄 Resumen de Readme.md
-
-### **Objetivo del Proyecto**
-Desarrollar un agente de IA personal robusto que funcione correctamente en al menos el **80 %** de los casos, capaz de:
-1. Entender instrucciones del usuario
-2. Planificar herramientas necesarias
-3. Ejecutar acciones
-4. Observar resultados y decidir siguientes pasos
-
-### **Arquitectura Técnica**
-- **Orquestación:** LangGraph (`StateGraph`)
-- **Modelo activo:** `ChatOpenAI` con OpenRouter (`openrouter/free`, `temperature=0`)
-- **Memoria:** SQLite para memoria y episodios de conversación
-- **Principio:** Local-first / privacy-first (aunque depende de servicios externos)
-
-### **Componentes Principales**
-| Componente | Descripción |
-|------------|-------------|
-| **Estado** | Contiene mensajes, recuerdos y episodio actual |
-| **Herramientas** | TV, archivos, tiempo, memoria, correo, clima, búsqueda web, etc. |
-| **Modelo** | Carga `.env` con `OPENAI_API_KEY`, vincula herramientas vía `bind_tools()` |
-| **Entorno** | Obtiene zona horaria, ubicación (ipwho.is) y hora actual |
-| **Nodos** | `agent` (LLM), `tools` (ejecución), `shouldContinue` (decisión de flujo) |
-
-### **Flujo de Ejecución**
-```
-START → loadEpisode → loadMemories → agent
-    ├─ con tool_calls → tools → agent
-    └─ sin tool_calls → saveMessages → END
-```
-
-### **Herramientas Disponibles**
-- 📺 Control: `tvController`
-- 🤖 IA: `delegateToAI`
-- 📁 Archivos: `listFiles`, `readFile`, `findFiles`, `overwriteFile`, `createDirectory`, `moveFile`
-- ⏰ Tiempo: `getCurrentTimeTool`, `addTime`, `substractTime`, `timeDiff`
-- 💾 Memoria: `searchMemory`
-- 📧 Correo: `getEmails`, `deleteEmail`, `readEmail`
-- 🌤️ Clima: `getCurrentWeather`, `getWeatherAt`, `getWeatherBetween`
-- 🔍 Búsqueda: `DuckDuckGoSearchRun`
-- 📅 Scheduler: Importado pero no activo
-
-### **Estado del Proyecto**
-| Fase | Estado |
-|------|--------|
-| Núcleo LangGraph y herramientas | 🟡 Parcialmente completado |
-| Memoria SQLite y episodios | 🟡 Implementación parcial |
-| Capacidades locales | 🟡 Herramientas disponibles, integración pendiente |
-| Integraciones externas | 🟡 Implementadas de forma aislada |
-| Scheduler | ⏳ Importado, no activo |
-| Delegación avanzada | ⏳ Pendiente |
-
-### **Limitaciones Actuales**
-- Código placeholder en `understandTask()` y `checkTaskComplete()`
-- No existe nodo explícito para comprobar cumplimiento de tarea
-- `loadEpisode()` puede devolver `None` (incompatible con el siguiente nodo)
-- `addMemory()` importado pero no registrado
-- Ejecución ligada a solicitud concreta en `main.py` (no reutilizable)
-- Herramientas externas no devuelven JSON estructurado uniformemente
-- Operaciones sensibles sin esquema uniforme de permisos/confirmación
-- Dependencias externas (ubicación, modelo activo) con implicaciones de privacidad
-- Falta capa común de validación y manejo de errores
-
-### **Seguridad**
-Necesita implementar:
-- Confirmación explícita para acciones irreversibles/alto riesgo
-- Listas blancas de archivos, cuentas, dispositivos y dominios
-- Mínimos privilegios por herramienta
-- Protección de claves y datos personales
-- Validación de respuestas antes de ejecutar acciones
-- Registros de auditoría para operaciones sensibles
-
-### **Próximos Pasos**
-1. Convertir `main.py` en aplicación reutilizable y parametrizable
-2. Completar persistencia de memoria y episodios en SQLite
-3. Registrar `addMemory` y el scheduler en el grafo
-4. Añadir nodo explícito de validación y conclusión
-5. Unificar formato de respuesta JSON estructurado para todas las herramientas
-6. Añadir permisos y confirmaciones antes de modificar archivos, borrar correos o controlar dispositivos
-7. Evaluar opción local para reducir dependencias externas
-
----
-
-*Última actualización: 17 de septiembre de 2026*""")
+  "En resumen: Será un día soleado y cálido durante el día, con temperaturas agradables para la noche. No hay riesgo de lluvia."
+}"""))
     # print(cosineSimilarity(getEmbedding("Busca recetas de cocina en internet"), getEmbedding("Me gustaría preparar la número 5")))
     # print(getTopEmbeddings("Hola"))
     # print(searchMemory("¿Qué herramientas utilizo para mi agente?"))
