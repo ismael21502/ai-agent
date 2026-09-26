@@ -18,7 +18,6 @@ def serializeMessage(message):
             "content": str
         }
     """
-
     # ---------------------------------------------------------
     # Human message
     # ---------------------------------------------------------
@@ -112,4 +111,9 @@ def clearMessages():
     cursor.execute("DELETE FROM sqlite_sequence WHERE name = 'messages';")
     conn.commit()
     conn.close()
-# print(getAllMessages())
+
+if __name__ == "__main__":
+    messages = getAllMessages()[151:]
+    print(messages)
+    # for message in messages:
+    #     print(message, end="\n\n") 

@@ -8,12 +8,16 @@ from pydantic import BaseModel
 
 import os
 import sqlite3
+from pathlib import Path
+
+MODEL_PATH = Path(__file__).resolve().parents[2] / "models" / "Qwen3-Reranker-0.6B"
 
 # TODO: Ahora la estructura de lo que genera el LLM es: {entity: str, memories: list[str]}.
 # Para permitir múltiples entities podría cambiar a {entity_1: list[str], entity_2: list[str], ...}
 DB = "memory.db"
 reranker = CrossEncoder(
-    "Qwen/Qwen3-Reranker-0.6B",
+    str(MODEL_PATH),
+    # "Qwen/Qwen3-Reranker-0.6B",
     prompts={
         "memory": "Determine whether the document contains information relevant to the user's query."
     },
@@ -200,7 +204,6 @@ def extractMemories(episode: str) -> list[str]:
     Do not create multiple memories expressing substantially the same fact.
     If the episode contains no durable information worth remembering, return an empty
     memories list.
-    A worth remembering information is a fact that is likely to remain useful in future (long-term) conversations.
     Episode:
     {episode}"""
     response = ollama.chat("qwen3.5:2b", messages=[
@@ -220,102 +223,27 @@ def extractMemories(episode: str) -> list[str]:
 # print(searchMemory("Hola, podrías resumir el clima"))
 
 if __name__ == "__main__":
-    memories = print(extractMemories("""{
-  "Temperaturas: "
-  " - Mínima: ~16.5°C (al amanecer, alrededor de las 6 AM) "
-  " - Máxima: ~29.0°C (a las 4 PM) "
+    # memories = print(extractMemories("""{
+    # "Temperaturas: "
+    # " - Mínima: ~16.5°C (al amanecer, alrededor de las 6 AM) "
+    # " - Máxima: ~29.0°C (a las 4 PM) "
 
-  "Condiciones generales: "
-  " - Precipitación: No se esperan lluvias (0 mm), con una probabilidad muy baja de lluvia (0-4%). "
-  " - Humedad: Varía entre un 26% y un 98%, siendo más alta durante la noche y el amanecer. "
-  " - Nubes: La cobertura nubosa fluctuará, con cielos mayormente despejados por la mañana y nublado en algunas horas de la tarde/noche. "
-  " - Viento: Velocidades moderadas entre 1.1 y 10.3 km/h. "
+    # "Condiciones generales: "
+    # " - Precipitación: No se esperan lluvias (0 mm), con una probabilidad muy baja de lluvia (0-4%). "
+    # " - Humedad: Varía entre un 26% y un 98%, siendo más alta durante la noche y el amanecer. "
+    # " - Nubes: La cobertura nubosa fluctuará, con cielos mayormente despejados por la mañana y nublado en algunas horas de la tarde/noche. "
+    # " - Viento: Velocidades moderadas entre 1.1 y 10.3 km/h. "
 
-  "En resumen: Será un día soleado y cálido durante el día, con temperaturas agradables para la noche. No hay riesgo de lluvia."
-}"""))
-    # print(cosineSimilarity(getEmbedding("Busca recetas de cocina en internet"), getEmbedding("Me gustaría preparar la número 5")))
-    # print(getTopEmbeddings("Hola"))
-    # print(searchMemory("¿Qué herramientas utilizo para mi agente?"))
-    # memories = [
-    #     # Proyectos
-    #     "El usuario desarrolla un agente de IA utilizando LangGraph.",
-    #     "El usuario utiliza Python para desarrollar agentes de IA.",
-    #     "El usuario utiliza Ollama para ejecutar modelos de IA localmente.",
-    #     "El proyecto Modular Robot GUI and firmware se encuentra en E:/Proyectos/Modular Robot.",
-    #     "El proyecto Boat Rental Management System es una aplicación web para gestionar el alquiler de embarcaciones.",
-    #     "El usuario utiliza React para desarrollar interfaces web.",
+    # "En resumen: Será un día soleado y cálido durante el día, con temperaturas agradables para la noche. No hay riesgo de lluvia."
+    # }"""))
 
-    #     # Hardware y robótica
-    #     "El usuario utiliza un Ryzen 5 Pro 4650G en su computadora principal.",
-    #     "El usuario utiliza 16 GB de memoria RAM DDR4.",
-    #     "El usuario utiliza una GPU RTX 5060 para ejecutar modelos de IA localmente.",
-    #     "El usuario utiliza un ESP32 para controlar proyectos de robótica.",
-    #     "El robot del usuario utiliza servomotores MG90S.",
-    #     "El usuario utiliza Windows como sistema operativo principal.",
+    conn = sqlite3.connect(DB)
 
-    #     # Conocimientos
-    #     "El usuario tiene conocimientos de Python.",
-    #     "El usuario tiene conocimientos de C y C++.",
-    #     "El usuario tiene conocimientos de JavaScript.",
-    #     "El usuario tiene conocimientos de React.",
-    #     "El usuario tiene conocimientos básicos de MATLAB.",
-    #     "El usuario está aprendiendo SQL para trabajar con bases de datos.",
+    # 1. Execute the query and fetch all matching rows
+    rows = conn.execute(""" SELECT * FROM memories """).fetchall()
 
-    #     # Preferencias y arquitectura de IA
-    #     "El usuario prefiere modelos de IA locales para mantener la privacidad de sus datos.",
-    #     "El usuario prefiere utilizar herramientas estructuradas en lugar de prompts excesivamente restrictivos.",
-    #     "El usuario prefiere arquitecturas de agentes con un modelo principal y modelos especializados.",
-    #     "El usuario utiliza modelos pequeños para tareas de clasificación y extracción.",
-    #     "El usuario utiliza modelos más grandes para razonamiento y ejecución de herramientas.",
+    # 2. Iterate through and print each row
+    for row in rows:
+        print(f"User_ID: {row[1]}, Episode_ID: {row[6]}, Content: {row[2]}")
 
-    #     # Desarrollo y trabajo
-    #     "El usuario estudia Ingeniería en Robótica.",
-    #     "El usuario busca oportunidades laborales relacionadas con tecnología.",
-    #     "El usuario ha desarrollado una aplicación de gestión para un negocio de alquiler de embarcaciones.",
-    #     "El usuario utiliza FastAPI para desarrollar APIs.",
-    #     "El usuario utiliza Tailwind CSS para desarrollar interfaces web.",
-
-    #     # Otros
-    #     "El usuario reside en Guadalajara, Jalisco, México.",
-    #     "El usuario utiliza español como idioma principal.",
-    #     "El usuario utiliza Gmail para gestionar su correo electrónico.",
-    #     "El usuario utiliza un decodificador XView para consumir televisión.",
-    #     "El usuario utiliza Google Cast para controlar dispositivos multimedia.",
-    # ]
-
-    # for memory in memories:
-    #     addMemory(1, memory)
-    # initDb()
-
-    # addMemory(
-    #     1,
-    #     "El usuario reside en Guadalajara, Jalisco, México."
-    # )
-
-    # addMemory(
-    #     1,
-    #     "El agente de IA utiliza Ollama para ejecutar modelos locales."
-    # )
-
-    # addMemory(
-    #     1,
-    #     "El usuario cuenta con una PC AM4, 32gb de RAM DDR4, SSD SATA 256gb y Ryzen 5 4650g."
-    # )
-
-    # addMemory(
-    #     1,
-    #     "El usuario tiene conocimientos avanzados de ReactJS."
-    # )
-
-    # print("Memorias agregadas correctamente.")
-
-    # conn = sqlite3.connect(DB)
-
-    # # 1. Execute the query and fetch all matching rows
-    # rows = conn.execute(""" SELECT * FROM memories """).fetchall()
-
-    # # 2. Iterate through and print each row
-    # for row in rows:
-    #     print(row)
-
-    # conn.close()
+    conn.close()

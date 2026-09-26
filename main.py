@@ -19,13 +19,7 @@ from episode import getEpisode, checkEpisodeRelevance, mergeEpisode
 from BuiltInTools.Google.gmail import getEmails, deleteEmail, readEmail
 from BuiltInTools.System.weather import getCurrentWeather, getWeatherBetween, getWeatherAt
 from message import addMessage, serializeMessage
-
 from dotenv import load_dotenv
-import os
-
-from datetime import datetime, timezone
-from BuiltInTools.scheduler import Scheduler
-
 import time 
 
 from langchain_community.tools import DuckDuckGoSearchRun
@@ -64,22 +58,7 @@ class State(TypedDict):
     memories: list[str]
     currentEpisode: str
 
-@tool
-def requestUserInput(question: str):    
-    """Request input from the user.
-    Use this tool to ask the user for information or clarification. The agent will wait for the user's response before proceeding.
-    Args:
-        question (str): The question to ask the user.
-    Returns:
-        dict: A dictionary containing the user's response.
-    """
-    response = input(f"{question} ")
-    return {
-        "success": True,
-        "response": response
-    }
 tools = [tvController, 
-            # scheduleTask,
             search,
             delegateToAI, 
             listFiles, readFile, findFiles, overwriteFile, createDirectory, moveFile,
@@ -130,24 +109,7 @@ def getEnvironment():
 # ---------------------------------------------------------
 # Nodo del agente
 # ---------------------------------------------------------
-class AgentState(TypedDict):
-    messages: list
-    memories: list
-    task: str
-    isTaskComplete: bool
 
-#TODO: Este será un nodo para que el agente entienda la task. Pero aún no me parece necesario. Podría usar un modelo 2b o 1b
-def understandTask(state: AgentState):
-    task = ...
-    return {
-        "task": task
-    }
-#TODO: En este caso, este nodo sí es más necesario. También usará un modelo IA para analizar si la tarea fue completada, pero tal vez tenga que hacerlo el modelo principal.
-def checkTaskComplete(state: AgentState):
-    isComplete = ...
-    return {
-        "isTaskComplete": isComplete
-    }
 def agent(state: State):
     environment = getEnvironment()
     if environment["location"]:
@@ -223,10 +185,10 @@ def saveEpisode(state: State):
         for message in formattedMessages
     )
     if state["currentEpisode"]:
-        mergeEpisode(state["currentEpisode"], llmText)
+        mergeEpisode(state["currentEpisode"], formattedMessages)
         print(f"Updated episode (id={state["currentEpisode"]['id']})")
     else:
-        mergeEpisode(state["currentEpisode"], llmText)
+        mergeEpisode(state["currentEpisode"], formattedMessages)
         print("Created new episode")
     return {}
 def loadMemories(state: State):
@@ -237,12 +199,10 @@ def loadMemories(state: State):
         "memories": memories
     }
 
-# Memory: una frase breve, concisa y autosuficiente, idealmente de 10–15 palabras, que contiene información durable potencialmente útil en futuras conversaciones. Puede describir al usuario, sus preferencias, proyectos, decisiones, entorno de trabajo, configuraciones o recursos importantes. Puede incluir rutas relevantes. No debe contener preguntas, contexto temporal, explicaciones, razonamiento intermedio ni información específica únicamente del episodio.
 def saveMemories(currentEpisode: dict):
-    #Use extract memories
     newMemories = extractMemories(currentEpisode["content"])
     for memory in newMemories:
-        addMemory(1, memory , currentEpisode["id"])
+        addMemory(1, memory, currentEpisode["id"])
 
 def loadEpisode(state: State):
     print("Loading episode...")
@@ -251,12 +211,10 @@ def loadEpisode(state: State):
     
     if checkEpisodeRelevance(currentEpisode["content"], userMessage):
         #Ask LLM if episode and message are compatible
-        print("El episode fue relevante")
         return {
             "currentEpisode": currentEpisode
         }
     else:
-        print("El episode no fue relevante")
         saveMemories(currentEpisode)
         return {
         "currentEpisode": None
@@ -318,7 +276,7 @@ result = app.invoke({
     "messages": [
         {
             "role": "user",
-            "content": "Hola, podrías resumir el clima de mañana, por favor?"
+            "content": "Cómo crees que podría definir un episode?"
         }
     ],
     "memories": [],
